@@ -25,14 +25,15 @@ plink_container = 'docker://biocontainers/plink1.9:v1.90b6.6-181012-1-deb_cv1'
 
 rule target:
     input:
+       expand('output/01_gatk/{sample}_gatk_viral.g.vcf.gz', sample=all_samples),
        'output/01_gatk/MhV1_genotyped.vcf.gz',
        expand('output/02_filtering/unfiltered_{variant_type}s.vcf.gz', variant_type=["SNP", "INDEL"]),
        expand('output/02_filtering/{filtering}_SNPs_stats.txt', filtering=["unfiltered", "pass-filtered"]),
        'output/02_filtering/final_filtered_SNPs.vcf.gz',
        ##plink PCA
-       expand('output/02_filtering/{timing}_final_filtered_SNPs.vcf.gz', timing=["historic", "contemporary"]),
-       expand('output/03_plink/no_ldpruning_{vcf_file}/filtered_snps_plink_pca.eigenvec', vcf_file=["final", "historic_final", "contemporary_final"]),
-       expand('output/03_plink/ld_pruned_{vcf_file}/filtered_snps_plink_pca.eigenvec', vcf_file=["final", "historic_final", "contemporary_final"])
+       expand('output/02_filtering/{location}_final_filtered_SNPs.vcf.gz', location=["SouthAmerican", "NZ"]),
+       #expand('output/03_plink/no_ldpruning_{vcf_file}/mind_{mind}/filtered_snps_plink_pca.eigenvec', vcf_file=["final", "SouthAmerican_final", "NZ_final"], mind=["0.2", "0.5"]),
+       #expand('output/03_plink/ld_pruned_{vcf_file}/mind_{mind}/filtered_snps_plink_pca.eigenvec', vcf_file=["final", "SouthAmerican_final", "NZ_final"], mind=["0.2", "0.5"])
 
 ###############
 ## plink PCA ##
@@ -44,11 +45,12 @@ rule plink_pca_LD: # prunes down to 289 SNPs, and 133 samples by mind (69%) for 
         vcf = 'output/02_filtering/{vcf_file}_filtered_SNPs.vcf.gz',
         pruned = 'output/03_plink/ld_pruned_{vcf_file}/filtered_snps_plink.prune.in'
     output:
-        'output/03_plink/ld_pruned_{vcf_file}/filtered_snps_plink_pca.eigenvec'
+        'output/03_plink/ld_pruned_{vcf_file}/mind_{mind}/filtered_snps_plink_pca.eigenvec'
     params:
-        'output/03_plink/ld_pruned_{vcf_file}/filtered_snps_plink_pca'
+        out_dir = 'output/03_plink/ld_pruned_{vcf_file}/mind_{mind}/filtered_snps_plink_pca',
+        mind = '{mind}'
     log:
-        'output/logs/plink_pca_LD_{vcf_file}.log'
+        'output/logs/plink_pca_LD_{vcf_file}_{mind}.log'
     singularity:
         plink_container
     shell:
@@ -60,8 +62,8 @@ rule plink_pca_LD: # prunes down to 289 SNPs, and 133 samples by mind (69%) for 
         '--extract {input.pruned} '
         '--make-bed '
         '--pca '
-        '--mind 0.5 ' ## filter out samples with 50% missing genotype data
-        '--out {params} '
+        '--mind  {paramns.mind} ' ## filter out samples with x% missing genotype data
+        '--out {params.out_dir} '
         '&> {log}'
 
 # prune dataset of variants in linkage - PCA relies on independent variables
@@ -93,11 +95,11 @@ rule plink_pca_no_ldpruning: # down to 135 samples by mind (kept 70% samples) - 
     input:
         vcf = 'output/02_filtering/{vcf_file}_filtered_SNPs.vcf.gz',
     output:
-        'output/03_plink/no_ldpruning_{vcf_file}/filtered_snps_plink_pca.eigenvec'
+        'output/03_plink/no_ldpruning_{vcf_file}/mind_{mind}/filtered_snps_plink_pca.eigenvec'
     params:
-        'output/03_plink/no_ldpruning_{vcf_file}/filtered_snps_plink_pca'
+        'output/03_plink/no_ldpruning_{vcf_file}/mind_{mind}/filtered_snps_plink_pca'
     log:
-        'output/logs/plink_pca_no_ldpruning_{vcf_file}.log'
+        'output/logs/plink_pca_no_ldpruning_{vcf_file}_{mind}.log'
     singularity:
         plink_container
     shell:
@@ -108,7 +110,7 @@ rule plink_pca_no_ldpruning: # down to 135 samples by mind (kept 70% samples) - 
         '--set-missing-var-ids @:# '
         '--make-bed '
         '--pca '
-        '--mind 0.5 ' ## filter out samples with 50% missing genotype data
+        '--mind {params.mind} ' ## filter out samples with x% missing genotype data
         '--out {params} '
         '&> {log}'
 
@@ -120,11 +122,11 @@ rule plink_pca_no_ldpruning: # down to 135 samples by mind (kept 70% samples) - 
 rule bcftools_split_timing:
     input:
         vcf = 'output/02_filtering/final_filtered_SNPs.vcf.gz',
-        timing_samples = 'data/{timing}_samples.txt'
+        timing_samples = 'data/{location}_samples.txt'
     output:
-        timing_vcf = 'output/02_filtering/{timing}_final_filtered_SNPs.vcf.gz'
+        timing_vcf = 'output/02_filtering/{location}_final_filtered_SNPs.vcf.gz'
     log:
-        "output/logs/bcftools_split_{timing}.log"
+        "output/logs/bcftools_split_{location}.log"
     singularity:
         bcftools_container
     shell:
@@ -145,14 +147,15 @@ rule remove_singletons: #### no. SNPs retained: 8 ###
         '-e "F_MISSING > 0.4 || MAF <= 0.05" '
         '-O z -o {output} {input} 2> {log}'
 # when missing > 0.2 no. SNPs = 8
-# when missing > 0.4 no. SNPs = 1238
+# when missing > 0.4 no. SNPs = 1238å
 
-
+# AC==0 no alternative allele called
 # AC==AN removes all sites where only alternative allele called - not true variant (assembly error)
 # SnpGap removes variants close to indels - harder to call with certainty
-# -m2 -M2 -v snps keeps only biallelic SNPs - minimum and maximum no. alleles is 2 and 10 as pooled sample, indels removed
+# -m and -M set minimum and maximum number of alleles
+
+# -m2 -M2 -v snps keeps only biallelic SNPs - minimum and maximum no. alleles is 2 aso only bi-allelic, indels removed ***** shouldn't be doing this for a haploid virus??
 # q = minimum allele freq
-# AC = allele count
 rule filter_for_variants: #### no. SNPs retained: 2152 ###
     input:
         'output/02_filtering/pass-filtered_SNPs.vcf.gz'
@@ -163,7 +166,7 @@ rule filter_for_variants: #### no. SNPs retained: 2152 ###
     singularity:
         bcftools_container
     shell:
-        'bcftools filter -e "AC==AN" --SnpGap 10 {input} | bcftools view -q 0.1 -m2 -M10 -v snps -O z -o {output} 2> {log}'
+        'bcftools filter -e "AC==0 || AC==AN" --SnpGap 10 {input} | bcftools view -q 0.1 -m2 -M10 -v snps -O z -o {output} 2> {log}' # max should also be 2, not pooled anymore
 
 ######################
 ## filtration stats ##
@@ -179,7 +182,7 @@ rule variant_stats:
     singularity:
         bcftools_container
     shell:
-        'bcftools query {input} -f "%FS\t%SOR\t%MQRankSum\t%ReadPosRankSum\t%QD\t%MQ\t%DP\n" > {output} 2> {log}'
+        'bcftools query {input} -f "%CHROM\t%POS\t%REF\t%ALT\t%QUAL\t%FS\t%SOR\t%MQRankSum\t%ReadPosRankSum\t%QD\t%MQ\t%DP\t%AC\n" > {output} 2> {log}'
 
 #############################
 ## gatk variant filtration ##
@@ -210,18 +213,25 @@ rule filter_SNPs:
     shell:
         'gatk VariantFiltration '
         '-V {input} '
-        '-filter "QUAL < 30.0" --filter-name "QUAL30" ' #### not on GATK recc.
+        '-filter "QUAL < 30.0" --filter-name "QUAL30" ' # recc.d in some GATK articles but not all
         '-filter-expression "DP < 50.0" --filter-name "DP50.0"  ' # filter by depth - filters by depth across all samples not by each sample individually, can probably be stricter here
-        '-filter "QD < 2.0" --filter-name "QD2" ' # quality normalised by depth
         '-filter "FS > 60.0" --filter-name "FS60" ' # fisher score for strand bias
         '-filter "SOR > 3.0" --filter-name "SOR3" ' # strand odds ratio for strand bias
         '-filter "MQ < 40.0" --filter-name "MQ40" ' # root mean square mapping quality
         '-filter "MQRankSum < -12.5" --filter-name "MQRankSum12.5" ' #rank sum test for mapping quality
         '-filter "ReadPosRankSum < -8.0" --filter-name "ReadPosRankSum8" ' # rank sum test for site position
-        '-filter "AC < 2 " --filter-name "AC2" ' # minimum allele count filter - at least 2
+        '-filter "AC < 2 " --filter-name "AC2" ' # minimum allele count filter - at least 2 - shouldn't be using this - should always = 2 for diploid, but for haploid virus which might have multiple variants in an individual shouldn't use
         '--missing-values-evaluate-as-failing true '
         '-O {output} '
         '2> {log}'
+
+# Tristan used:
+    # min-mac 2 - minimum minor allele count, also min/max allele count = 2, I've done this later   ***** need to change max to 2 as well - have it incorrectly later on from pooled genome sample - or should these actually be 1 because not diploid
+    # minDP of 200, max of 10k                                                                      ***** basically no difference, use Tristan's filters
+    # QD > 10, I've not used this!!!!!                                                              ***** can trial both 2 and 10
+    # MQ > 50, I've used 40                                                                         ***** this increase makes a big difference, trial 40 and 50
+    # no indels or multiallelics                                                                    ***** then my extra remaining filters don't change too much so probably keep them
+    # minimum allele freq = 0.1:minor - I've done this later                                        ***** need to think about minimum allele count filter to ensure it makes sense
 
 rule select_variants: #### no. SNPs: 6855 ###
     input:
@@ -242,7 +252,7 @@ rule select_variants: #### no. SNPs: 6855 ###
         '2> {log}'
 
 ##########################
-## MhV1 variant calling ##
+## MhFV variant calling ##
 ##########################
 
 rule genotype_gvcfs_combined: #### no. variants: 9563 ###
@@ -306,12 +316,14 @@ rule gatk_viral:
         'gatk --java-options "-Xmx4g" HaplotypeCaller '
         '-R {input.genome} '
         '-I {input.bam} '
-        '-L scaffold_1_MhV1 '
-        '--ploidy 1 '
+        '-L scaffold_1_MhV1 ' # restrict to only viral contig
+        '--ploidy 1 ' # haploid for virus
         '--native-pair-hmm-threads {threads} '
-        '-ERC GVCF '
+        '-ERC GVCF ' # output gVCF files
         '-O {output.gvcf} '
         '2> {log}'
+
+# Tristan never did Base Quality Score Recalibration (BQSR) but it is reccommended on GATK website so may be worth a try
 
 rule samtools_index_gatk:
     input:
@@ -421,7 +433,7 @@ rule fix_read_mates:
 
 rule sort_bams_name:
     input:
-        'output/bwa_Mh_MhV1/{sample}_sorted.bam'
+        'output/bwa_Mh_MhFV/{sample}_sorted.bam'
     output:
         temp('output/samtools/{sample}_name_sorted.bam')
     threads:
