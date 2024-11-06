@@ -5,18 +5,18 @@ library(viridis)
 # read in metadata
 sample_table <- fread("data/sample_table.csv")
 sample_table_histSA <- subset(sample_table, sample_timing=="historic rearing")
-sample_info <- sample_table[,c(1,2,3,6,8,10:12)]
+sample_info <- sample_table_histSA[,c(1:3,5:7,13,14,22)]
 
 ###################
 #### LD PRUNED ####
 ###################
 
 # read in data
-pca <- fread("output/03_plink/ld_pruned_SouthAmerican_final/filtered_snps_plink_pca.eigenvec", header = FALSE)
-eigenval <- scan("output/03_plink/ld_pruned_SouthAmerican_final/filtered_snps_plink_pca.eigenval")
+pca <- fread("output/05_plink/ld_pruned_SouthAmerican_Mhyp_75cov_only/mind_0.2/filtered_SNPs_plink_pca.eigenvec", header = FALSE)
+eigenval <- scan("output/05_plink/ld_pruned_SouthAmerican_Mhyp_75cov_only/mind_0.2/filtered_SNPs_plink_pca.eigenval")
 
 # what samples pruned out?
-pruned_out_samples <- setdiff(sample_table$sample_name, pca$V1)
+pruned_out_samples <- setdiff(sample_table_histSA$sample_name, pca$V1)
 pruned_out_sample_table <- subset(sample_table, sample_name %in% pruned_out_samples)
 
 # sort out the pca data
@@ -27,10 +27,10 @@ names(pca)[1] <- "sample_name"
 names(pca)[2:ncol(pca)] <- paste0("PC", 1:(ncol(pca)-1))
 
 # merge with sample info
-pca_info <- merge(pca, sample_info)
-pca_info$Location <- factor(pca_info$Location, levels=c("Concepcion", "LaSerena",
-                                                        "Bariloche",
-                                                        "Mendoza", "RioNegro", "Ascasubi", "Uruguay", "PortoAlegre"))
+pca_info <- merge(pca, sample_info, by="sample_name")
+pca_info$Location <- factor(pca_info$Location, levels=c("Concepcion (South Chile)", "La Serena",
+                                                        "San Carlos de Bariloche",
+                                                        "Mendoza", "Rio Negro", "Hilario Ascasubi", "Colonia (Uruguay)", "Porto Alegre"))
 pca_info$historic_E_W <- factor(pca_info$historic_E_W, levels=c("West", "Intermediate", "East"))
 
 # first convert to percentage variance explained
@@ -46,14 +46,14 @@ cumsum(pve$pve)
 # plot pca
 ggplot(pca_info, aes(PC1, PC2, colour=Location, shape=historic_E_W))+ 
   geom_point(size = 3, alpha=0.8)+
-  scale_colour_manual(values=c("Concepcion" = "#8c2981",
-                               "LaSerena" = "#de4968",
-                               "Bariloche" = "#fe9f6d",
+  scale_colour_manual(values=c("Concepcion (South Chile)" = "#8c2981",
+                               "La Serena" = "#de4968",
+                               "San Carlos de Bariloche" = "#fe9f6d",
                                "Mendoza" = "#414487",
-                               "RioNegro" = "#2a788e",
-                               "Ascasubi" = "#22a884",
-                               "Uruguay" = "#7ad151",
-                               "PortoAlegre" = "#fde725"))+
+                               "Rio Negro" = "#2a788e",
+                               "Hilario Ascasubi" = "#22a884",
+                               "Colonia (Uruguay)" = "#7ad151",
+                               "Porto Alegre" = "#fde725"))+
   scale_shape_manual(values=c("West"=15,
                               "Intermediate"=17,
                               "East" = 19))+
@@ -62,6 +62,39 @@ ggplot(pca_info, aes(PC1, PC2, colour=Location, shape=historic_E_W))+
   labs(shape="East vs West of Andes")+
   xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)"))+
   ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))
+
+pca_info$rearing_timing <- ifelse(pca_info$seq_cohort=="cohort4", paste("Early rearing"), paste("Late rearing"))
+# plot pca
+ggplot(pca_info, aes(PC1, PC2, colour=Location, shape=rearing_timing))+ 
+  geom_point(size = 3, alpha=0.8)+
+  scale_colour_manual(values=c("Concepcion (South Chile)" = "#8c2981",
+                               "La Serena" = "#de4968",
+                               "San Carlos de Bariloche" = "#fe9f6d",
+                               "Mendoza" = "#414487",
+                               "Rio Negro" = "#2a788e",
+                               "Hilario Ascasubi" = "#22a884",
+                               "Colonia (Uruguay)" = "#7ad151",
+                               "Porto Alegre" = "#fde725"))+
+  coord_equal()+
+  theme_light()+
+  labs(shape="Rearing stage")+
+  xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)"))+
+  ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))
+
+# coloured by seq batch
+pca_info$sample_batch <- ifelse(pca_info$seq_cohort=="cohort4", paste("Batch 2 (earlier)"), paste("Batch 1 (later)"))
+ggplot(pca_info, aes(PC1, PC2, colour=sample_batch, shape=historic_E_W))+ 
+  geom_point(size = 3, alpha=0.8)+
+  scale_colour_viridis(discrete=T)+
+  scale_shape_manual(values=c("West"=15,
+                              "Intermediate"=17,
+                              "East" = 19))+
+  coord_equal()+
+  theme_light()+
+  labs(shape="East vs West of Andes", colour="Sample Batch")+
+  xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)"))+
+  ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))
+
 
 ggplot(pca_info, aes(PC1, PC2, colour=historic_E_W))+ 
   geom_point(size = 3, alpha=0.9)+
@@ -142,8 +175,8 @@ ggplot(long_pca_info_lat, aes(sample_name, value, colour=historic_longitude))+
 #######################
 
 # read in data
-pca <- fread("output/03_plink/no_ldpruning_SouthAmerican_final/filtered_snps_plink_pca.eigenvec", header = FALSE)
-eigenval <- scan("output/03_plink/no_ldpruning_SouthAmerican_final/filtered_snps_plink_pca.eigenval")
+pca <- fread("output/05_plink/no_ldpruning_SouthAmerican_Mhyp_75cov_only/mind_0.2/filtered_SNPs_plink_pca.eigenvec", header = FALSE)
+eigenval <- scan("output/05_plink/no_ldpruning_SouthAmerican_Mhyp_75cov_only/mind_0.2/filtered_SNPs_plink_pca.eigenval")
 
 # what samples pruned out?
 pruned_out_samples <- setdiff(sample_table_histSA$sample_name, pca$V1)
@@ -157,10 +190,12 @@ names(pca)[1] <- "sample_name"
 names(pca)[2:ncol(pca)] <- paste0("PC", 1:(ncol(pca)-1))
 
 # merge with sample info
-pca_info <- merge(pca, sample_info)
-pca_info$Location <- factor(pca_info$Location, levels=c("Concepcion", "LaSerena",
-                                                        "Bariloche",
-                                                        "Mendoza", "RioNegro", "Ascasubi", "Uruguay", "PortoAlegre"))
+pca_info <- merge(pca, sample_info, by="sample_name")
+pca_info$Location <- factor(pca_info$Location, levels=c("Concepcion (South Chile)", "La Serena",
+                                                        "San Carlos de Bariloche",
+                                                        "Mendoza", "Rio Negro", "Hilario Ascasubi", "Colonia (Uruguay)", "Porto Alegre"))
+pca_info$historic_E_W <- factor(pca_info$historic_E_W, levels=c("West", "Intermediate", "East"))
+
 
 # first convert to percentage variance explained
 pve <- data.frame(PC = 1:20, pve = eigenval/sum(eigenval)*100)
@@ -171,6 +206,43 @@ ggplot(pve, aes(PC, pve)) + geom_bar(stat = "identity")+
 
 # calculate the cumulative sum of the percentage variance explained
 cumsum(pve$pve)
+
+pca_info$rearing_timing <- ifelse(pca_info$seq_cohort=="cohort4", paste("Early rearing"), paste("Late rearing"))
+# plot pca
+ggplot(pca_info, aes(PC1, PC2, colour=Location, shape=rearing_timing))+ 
+  geom_point(size = 3, alpha=0.8)+
+  scale_colour_manual(values=c("Concepcion (South Chile)" = "#8c2981",
+                               "La Serena" = "#de4968",
+                               "San Carlos de Bariloche" = "#fe9f6d",
+                               "Mendoza" = "#414487",
+                               "Rio Negro" = "#2a788e",
+                               "Hilario Ascasubi" = "#22a884",
+                               "Colonia (Uruguay)" = "#7ad151",
+                               "Porto Alegre" = "#fde725"))+
+  coord_equal()+
+  theme_light()+
+  labs(shape="Rearing stage")+
+  xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)"))+
+  ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))
+
+## same plot only early
+pca_info_early <- subset(pca_info, rearing_timing=="Early rearing")
+ggplot(pca_info_early, aes(PC1, PC2, colour=Location, shape=rearing_timing))+ 
+  geom_point(size = 3, alpha=0.8)+
+  scale_colour_manual(values=c("Concepcion (South Chile)" = "#8c2981",
+                               "La Serena" = "#de4968",
+                               "San Carlos de Bariloche" = "#fe9f6d",
+                               "Mendoza" = "#414487",
+                               "Rio Negro" = "#2a788e",
+                               "Hilario Ascasubi" = "#22a884",
+                               "Colonia (Uruguay)" = "#7ad151",
+                               "Porto Alegre" = "#fde725"))+
+  coord_equal()+
+  theme_light()+
+  labs(shape="Rearing stage")+
+  xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)"))+
+  ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))
+
 
 # plot pca
 ggplot(pca_info, aes(PC1, PC2, colour=Location, shape=historic_E_W))+ 

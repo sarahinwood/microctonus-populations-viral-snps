@@ -4,15 +4,15 @@ library(viridis)
 
 # read in metadata
 sample_table <- fread("data/sample_table.csv")
-sample_info <- sample_table[,c(1,6,8,9)]
+sample_info <- sample_table[,c(1:3,5:8,13,14,22)]
 
 #######################
 #### NOT LD PRUNED ####
 #######################
 
 # read in data
-pca <- fread("output/03_plink/no_ldpruning_final/filtered_snps_plink_pca.eigenvec", header = FALSE)
-eigenval <- scan("output/03_plink/no_ldpruning_final/filtered_snps_plink_pca.eigenval")
+pca <- fread("output/05_plink/no_ldpruning_NZ_Mhyp_75cov_only/mind_0.2/filtered_SNPs_plink_pca.eigenvec", header = FALSE)
+eigenval <- scan("output/05_plink/no_ldpruning_NZ_Mhyp_75cov_only/mind_0.2/filtered_SNPs_plink_pca.eigenval")
 
 # what samples pruned out?
 pruned_out_samples <- setdiff(sample_table$sample_name, pca$V1)
@@ -32,21 +32,28 @@ pca_info <- merge(pca, sample_info)
 pve <- data.frame(PC = 1:20, pve = eigenval/sum(eigenval)*100)
 
 # make plot
-ggplot(pve, aes(PC, pve)) + geom_bar(stat = "identity")+
-  ylab("Percentage variance explained") + theme_light()
+#ggplot(pve, aes(PC, pve)) + geom_bar(stat = "identity")+
+#  ylab("Percentage variance explained") + theme_light()
 
 # calculate the cumulative sum of the percentage variance explained
 cumsum(pve$pve)
 
+#reorder
+pca_info$sample_timing <- factor(pca_info$sample_timing, levels=c("contemporary", "historic NZ", "historic rearing" ))
+
+pca_info <- pca_info %>%
+  arrange(sample_timing, Location, sample_name)
+
 # plot pca
-ggplot(pca_info, aes(PC1, PC2, colour=Location, shape=sample_timing))+ 
-  geom_point(size = 3)+
+ggplot(pca_info, aes(PC1, PC2, colour=sample_timing))+ 
+  geom_point(size = 3, alpha=0.8)+
   scale_colour_viridis(discrete=T)+ 
   coord_equal()+
   theme_light()+
   labs(shape="Sample timing")+
   xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)"))+
-  ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))
+  ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))#+
+  #scale_y_reverse() ## makes it more comparable to previous plot
 
 # test other PC combos
 ggplot(pca_info, aes(PC2, PC3, shape=sample_timing, colour=Location))+

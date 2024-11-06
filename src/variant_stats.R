@@ -16,12 +16,15 @@ library(ggplot2)
 #join tables
 #variant_stats <- full_join(unfSnps_variant_stats, filSnps_variant_stats)
 
-unfSnps_variant_stats <- fread("output/02_filtering/unfiltered_SNPs_stats.txt", header=F, na.strings=".")
+unfSnps_variant_stats <- fread("output/02_gatk_combined/unfiltered_SNPs_stats_all.txt", header=F, na.strings=".")
 unfSnps_variant_stats$filtration_status <- paste("unfiltered")
-setnames(unfSnps_variant_stats, old=c("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11", "V12", "V13"),
-         new=c("CHROM", "POS", "REF", "ALT", "QUAL", "FS", "SOR", "MQRankSum", "ReadPosRankSum", "QD", "MQ", "DP", "AC"))
+setnames(unfSnps_variant_stats, old=c("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11", "V12", "V13", "V14"),
+         new=c("CHROM", "POS", "REF", "ALT", "QUAL", "FS", "SOR", "MQRankSum", "ReadPosRankSum", "QD", "MQ", "DP", "AC", "GQ"))
 ##remove rows with NA
 unfvariant_stats_nona <- na.omit(unfSnps_variant_stats)
+
+## qual filter
+qual40 <- subset(unfvariant_stats_nona, QUAL>40)
 
 # DP - barely any difference here - can change to Tristans
 DP_Tristan_filters <- subset(unfvariant_stats_nona, DP>200 & DP<10000)
